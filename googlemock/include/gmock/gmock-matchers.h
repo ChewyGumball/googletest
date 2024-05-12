@@ -290,6 +290,9 @@ GTEST_DISABLE_MSC_WARNINGS_PUSH_(
 
 namespace testing {
 
+using std::begin;
+using std::end;
+
 // To implement a matcher Foo for type T, define:
 //   1. a class FooMatcherImpl that implements the
 //      MatcherInterface<T> interface, and
@@ -2359,9 +2362,7 @@ class BeginEndDistanceIsMatcher {
     typedef internal::StlContainerView<GTEST_REMOVE_REFERENCE_AND_CONST_(
         Container)>
         ContainerView;
-    typedef typename std::iterator_traits<
-        typename ContainerView::type::const_iterator>::difference_type
-        DistanceType;
+    typedef typename ContainerView::difference_type DistanceType;
     explicit Impl(const DistanceMatcher& distance_matcher)
         : distance_matcher_(MatcherCast<DistanceType>(distance_matcher)) {}
 
@@ -2445,10 +2446,10 @@ class ContainerEqMatcher {
     if (os != nullptr) {
       // Something is different. Check for extra values first.
       bool printed_header = false;
-      for (auto it = lhs_stl_container.begin(); it != lhs_stl_container.end();
+      for (auto it = begin(lhs_stl_container); it != end(lhs_stl_container);
            ++it) {
-        if (internal::ArrayAwareFind(expected_.begin(), expected_.end(), *it) ==
-            expected_.end()) {
+        if (internal::ArrayAwareFind(begin(expected_), end(expected_), *it) ==
+            end(expected_)) {
           if (printed_header) {
             *os << ", ";
           } else {
@@ -2461,10 +2462,10 @@ class ContainerEqMatcher {
 
       // Now check for missing values.
       bool printed_header2 = false;
-      for (auto it = expected_.begin(); it != expected_.end(); ++it) {
-        if (internal::ArrayAwareFind(lhs_stl_container.begin(),
-                                     lhs_stl_container.end(),
-                                     *it) == lhs_stl_container.end()) {
+      for (auto it = begin(expected_); it != end(expected_); ++it) {
+        if (internal::ArrayAwareFind(begin(lhs_stl_container),
+                                     end(lhs_stl_container),
+                                     *it) == end(lhs_stl_container)) {
           if (printed_header2) {
             *os << ", ";
           } else {
@@ -2515,9 +2516,8 @@ class WhenSortedByMatcher {
     typedef typename LhsView::const_reference LhsStlContainerReference;
     // Transforms std::pair<const Key, Value> into std::pair<Key, Value>
     // so that we can match associative containers.
-    typedef
-        typename RemoveConstFromKey<typename LhsStlContainer::value_type>::type
-            LhsValue;
+    typedef typename RemoveConstFromKey<GTEST_REMOVE_REFERENCE_AND_CONST_(
+        typename LhsView::value_type)>::type LhsValue;
 
     Impl(const Comparator& comparator, const ContainerMatcher& matcher)
         : comparator_(comparator), matcher_(matcher) {}
@@ -2535,8 +2535,8 @@ class WhenSortedByMatcher {
     bool MatchAndExplain(LhsContainer lhs,
                          MatchResultListener* listener) const override {
       LhsStlContainerReference lhs_stl_container = LhsView::ConstReference(lhs);
-      ::std::vector<LhsValue> sorted_container(lhs_stl_container.begin(),
-                                               lhs_stl_container.end());
+      ::std::vector<LhsValue> sorted_container(begin(lhs_stl_container),
+                                               end(lhs_stl_container));
       ::std::sort(sorted_container.begin(), sorted_container.end(),
                   comparator_);
 
@@ -2583,7 +2583,7 @@ class PointwiseMatcher {
  public:
   typedef internal::StlContainerView<RhsContainer> RhsView;
   typedef typename RhsView::type RhsStlContainer;
-  typedef typename RhsStlContainer::value_type RhsValue;
+  typedef typename RhsView::value_type RhsValue;
 
   static_assert(!std::is_const<RhsContainer>::value,
                 "RhsContainer type must not be const");
@@ -2613,7 +2613,7 @@ class PointwiseMatcher {
         LhsView;
     typedef typename LhsView::type LhsStlContainer;
     typedef typename LhsView::const_reference LhsStlContainerReference;
-    typedef typename LhsStlContainer::value_type LhsValue;
+    typedef typename LhsView::value_type LhsValue;
     // We pass the LHS value and the RHS value to the inner matcher by
     // reference, as they may be expensive to copy.  We must use tuple
     // instead of pair here, as a pair cannot hold references (C++ 98,
@@ -2626,14 +2626,14 @@ class PointwiseMatcher {
           rhs_(rhs) {}
 
     void DescribeTo(::std::ostream* os) const override {
-      *os << "contains " << rhs_.size()
+      *os << "contains " << RhsView::Size(rhs_)
           << " values, where each value and its corresponding value in ";
       UniversalPrinter<RhsStlContainer>::Print(rhs_, os);
       *os << " ";
       mono_tuple_matcher_.DescribeTo(os);
     }
     void DescribeNegationTo(::std::ostream* os) const override {
-      *os << "doesn't contain exactly " << rhs_.size()
+      *os << "doesn't contain exactly " << RhsView::Size(rhs_)
           << " values, or contains a value x at some index i"
           << " where x and the i-th value of ";
       UniversalPrint(rhs_, os);
@@ -2644,14 +2644,14 @@ class PointwiseMatcher {
     bool MatchAndExplain(LhsContainer lhs,
                          MatchResultListener* listener) const override {
       LhsStlContainerReference lhs_stl_container = LhsView::ConstReference(lhs);
-      const size_t actual_size = lhs_stl_container.size();
-      if (actual_size != rhs_.size()) {
+      const size_t actual_size = LhsView::Size(lhs_stl_container);
+      if (actual_size != RhsView::Size(rhs_)) {
         *listener << "which contains " << actual_size << " values";
         return false;
       }
 
-      auto left = lhs_stl_container.begin();
-      auto right = rhs_.begin();
+      auto left = begin(lhs_stl_container);
+      auto right = begin(rhs_);
       for (size_t i = 0; i != actual_size; ++i, ++left, ++right) {
         if (listener->IsInterested()) {
           StringMatchResultListener inner_listener;
@@ -2699,7 +2699,7 @@ class QuantifierMatcherImpl : public MatcherInterface<Container> {
   typedef StlContainerView<RawContainer> View;
   typedef typename View::type StlContainer;
   typedef typename View::const_reference StlContainerReference;
-  typedef typename StlContainer::value_type Element;
+  typedef typename View::value_type Element;
 
   template <typename InnerMatcher>
   explicit QuantifierMatcherImpl(InnerMatcher inner_matcher)
@@ -2713,8 +2713,7 @@ class QuantifierMatcherImpl : public MatcherInterface<Container> {
                            MatchResultListener* listener) const {
     StlContainerReference stl_container = View::ConstReference(container);
     size_t i = 0;
-    for (auto it = stl_container.begin(); it != stl_container.end();
-         ++it, ++i) {
+    for (auto it = begin(stl_container); it != end(stl_container); ++it, ++i) {
       StringMatchResultListener inner_listener;
       const bool matches = inner_matcher_.MatchAndExplain(*it, &inner_listener);
 
@@ -3371,7 +3370,7 @@ class ElementsAreMatcherImpl : public MatcherInterface<Container> {
   typedef internal::StlContainerView<RawContainer> View;
   typedef typename View::type StlContainer;
   typedef typename View::const_reference StlContainerReference;
-  typedef typename StlContainer::value_type Element;
+  typedef typename View::value_type Element;
 
   // Constructs the matcher from a sequence of element values or
   // element matchers.
@@ -3428,14 +3427,14 @@ class ElementsAreMatcherImpl : public MatcherInterface<Container> {
     // explanations[i] is the explanation of the element at index i.
     ::std::vector<std::string> explanations(count());
     StlContainerReference stl_container = View::ConstReference(container);
-    auto it = stl_container.begin();
+    auto it = begin(stl_container);
     size_t exam_pos = 0;
     bool mismatch_found = false;  // Have we found a mismatched element yet?
 
     // Go through the elements and matchers in pairs, until we reach
     // the end of either the elements or the matchers, or until we find a
     // mismatch.
-    for (; it != stl_container.end() && exam_pos != count(); ++it, ++exam_pos) {
+    for (; it != end(stl_container) && exam_pos != count(); ++it, ++exam_pos) {
       bool match;  // Does the current element match the current matcher?
       if (listener_interested) {
         StringMatchResultListener s;
@@ -3456,7 +3455,7 @@ class ElementsAreMatcherImpl : public MatcherInterface<Container> {
     // calling size() s.t. this code works for stream-like "containers"
     // that don't define size().
     size_t actual_count = exam_pos;
-    for (; it != stl_container.end(); ++it) {
+    for (; it != end(stl_container); ++it) {
       ++actual_count;
     }
 
@@ -3617,7 +3616,7 @@ class UnorderedElementsAreMatcherImpl
   typedef internal::StlContainerView<RawContainer> View;
   typedef typename View::type StlContainer;
   typedef typename View::const_reference StlContainerReference;
-  typedef typename StlContainer::value_type Element;
+  typedef typename View::value_type Element;
 
   template <typename InputIter>
   UnorderedElementsAreMatcherImpl(UnorderedMatcherRequire::Flags matcher_flags,
@@ -3645,9 +3644,8 @@ class UnorderedElementsAreMatcherImpl
                        MatchResultListener* listener) const override {
     StlContainerReference stl_container = View::ConstReference(container);
     ::std::vector<std::string> element_printouts;
-    MatchMatrix matrix =
-        AnalyzeElements(stl_container.begin(), stl_container.end(),
-                        &element_printouts, listener);
+    MatchMatrix matrix = AnalyzeElements(
+        begin(stl_container), end(stl_container), &element_printouts, listener);
 
     return VerifyMatchMatrix(element_printouts, matrix, listener) &&
            FindPairing(matrix, listener);
@@ -3705,7 +3703,7 @@ class UnorderedElementsAreMatcher {
   template <typename Container>
   operator Matcher<Container>() const {
     typedef GTEST_REMOVE_REFERENCE_AND_CONST_(Container) RawContainer;
-    typedef typename internal::StlContainerView<RawContainer>::type View;
+    typedef typename internal::StlContainerView<RawContainer> View;
     typedef typename View::value_type Element;
     typedef ::std::vector<Matcher<const Element&>> MatcherVec;
     MatcherVec matchers;
@@ -3736,7 +3734,7 @@ class ElementsAreMatcher {
         "use UnorderedElementsAre with hash tables");
 
     typedef GTEST_REMOVE_REFERENCE_AND_CONST_(Container) RawContainer;
-    typedef typename internal::StlContainerView<RawContainer>::type View;
+    typedef typename internal::StlContainerView<RawContainer> View;
     typedef typename View::value_type Element;
     typedef ::std::vector<Matcher<const Element&>> MatcherVec;
     MatcherVec matchers;
@@ -4170,8 +4168,8 @@ inline auto ElementsAreArray(const T (&array)[N])
 
 template <typename Container>
 inline auto ElementsAreArray(const Container& container)
-    -> decltype(ElementsAreArray(container.begin(), container.end())) {
-  return ElementsAreArray(container.begin(), container.end());
+    -> decltype(ElementsAreArray(begin(container), end(container))) {
+  return ElementsAreArray(begin(container), end(container));
 }
 
 template <typename T>
@@ -4203,27 +4201,26 @@ UnorderedElementsAreArray(Iter first, Iter last) {
 }
 
 template <typename T>
-inline internal::UnorderedElementsAreArrayMatcher<T> UnorderedElementsAreArray(
-    const T* pointer, size_t count) {
+inline auto UnorderedElementsAreArray(const T* pointer, size_t count)
+    -> decltype(UnorderedElementsAreArray(pointer, pointer + count)) {
   return UnorderedElementsAreArray(pointer, pointer + count);
 }
 
 template <typename T, size_t N>
-inline internal::UnorderedElementsAreArrayMatcher<T> UnorderedElementsAreArray(
-    const T (&array)[N]) {
+inline auto UnorderedElementsAreArray(const T (&array)[N])
+    -> decltype(UnorderedElementsAreArray(array, N)) {
   return UnorderedElementsAreArray(array, N);
 }
 
 template <typename Container>
-inline internal::UnorderedElementsAreArrayMatcher<
-    typename Container::value_type>
-UnorderedElementsAreArray(const Container& container) {
-  return UnorderedElementsAreArray(container.begin(), container.end());
+inline auto UnorderedElementsAreArray(const Container& container)
+    -> decltype(UnorderedElementsAreArray(begin(container), end(container))) {
+  return UnorderedElementsAreArray(begin(container), end(container));
 }
 
 template <typename T>
-inline internal::UnorderedElementsAreArrayMatcher<T> UnorderedElementsAreArray(
-    ::std::initializer_list<T> xs) {
+inline auto UnorderedElementsAreArray(::std::initializer_list<T> xs)
+    -> decltype(UnorderedElementsAreArray(xs.begin(), xs.end())) {
   return UnorderedElementsAreArray(xs.begin(), xs.end());
 }
 
@@ -4762,22 +4759,21 @@ template <typename Tuple2Matcher, typename RhsContainer>
 inline internal::UnorderedElementsAreArrayMatcher<
     typename internal::BoundSecondMatcher<
         Tuple2Matcher,
-        typename internal::StlContainerView<
-            typename std::remove_const<RhsContainer>::type>::type::value_type>>
+        GTEST_REMOVE_REFERENCE_AND_CONST_(
+            typename internal::StlContainerView<RhsContainer>::value_type)>>
 UnorderedPointwise(const Tuple2Matcher& tuple2_matcher,
                    const RhsContainer& rhs_container) {
   // RhsView allows the same code to handle RhsContainer being a
   // STL-style container and it being a native C-style array.
   typedef typename internal::StlContainerView<RhsContainer> RhsView;
   typedef typename RhsView::type RhsStlContainer;
-  typedef typename RhsStlContainer::value_type Second;
+  typedef GTEST_REMOVE_REFERENCE_AND_CONST_(RhsView::value_type) Second;
   const RhsStlContainer& rhs_stl_container =
       RhsView::ConstReference(rhs_container);
 
   // Create a matcher for each element in rhs_container.
   ::std::vector<internal::BoundSecondMatcher<Tuple2Matcher, Second>> matchers;
-  for (auto it = rhs_stl_container.begin(); it != rhs_stl_container.end();
-       ++it) {
+  for (auto it = begin(rhs_stl_container); it != end(rhs_stl_container); ++it) {
     matchers.push_back(internal::MatcherBindSecond(tuple2_matcher, *it));
   }
 
@@ -4867,22 +4863,21 @@ IsSupersetOf(Iter first, Iter last) {
 }
 
 template <typename T>
-inline internal::UnorderedElementsAreArrayMatcher<T> IsSupersetOf(
-    const T* pointer, size_t count) {
+inline auto IsSupersetOf(const T* pointer, size_t count)
+    -> decltype(IsSupersetOf(pointer, pointer + count)) {
   return IsSupersetOf(pointer, pointer + count);
 }
 
 template <typename T, size_t N>
-inline internal::UnorderedElementsAreArrayMatcher<T> IsSupersetOf(
-    const T (&array)[N]) {
+inline auto IsSupersetOf(const T (&array)[N]) -> decltype(IsSupersetOf(array,
+                                                                       N)) {
   return IsSupersetOf(array, N);
 }
 
 template <typename Container>
-inline internal::UnorderedElementsAreArrayMatcher<
-    typename Container::value_type>
-IsSupersetOf(const Container& container) {
-  return IsSupersetOf(container.begin(), container.end());
+inline auto IsSupersetOf(const Container& container)
+    -> decltype(IsSupersetOf(begin(container), end(container))) {
+  return IsSupersetOf(begin(container), end(container));
 }
 
 template <typename T>
@@ -4924,27 +4919,25 @@ IsSubsetOf(Iter first, Iter last) {
 }
 
 template <typename T>
-inline internal::UnorderedElementsAreArrayMatcher<T> IsSubsetOf(
-    const T* pointer, size_t count) {
+inline auto IsSubsetOf(const T* pointer, size_t count)
+    -> decltype(IsSubsetOf(pointer, pointer + count)) {
   return IsSubsetOf(pointer, pointer + count);
 }
 
 template <typename T, size_t N>
-inline internal::UnorderedElementsAreArrayMatcher<T> IsSubsetOf(
-    const T (&array)[N]) {
+inline auto IsSubsetOf(const T (&array)[N]) -> decltype(IsSubsetOf(array, N)) {
   return IsSubsetOf(array, N);
 }
 
 template <typename Container>
-inline internal::UnorderedElementsAreArrayMatcher<
-    typename Container::value_type>
-IsSubsetOf(const Container& container) {
-  return IsSubsetOf(container.begin(), container.end());
+inline auto IsSubsetOf(const Container& container)
+    -> decltype(IsSubsetOf(begin(container), end(container))) {
+  return IsSubsetOf(begin(container), end(container));
 }
 
 template <typename T>
-inline internal::UnorderedElementsAreArrayMatcher<T> IsSubsetOf(
-    ::std::initializer_list<T> xs) {
+inline auto IsSubsetOf(::std::initializer_list<T> xs)
+    -> decltype(IsSubsetOf(xs.begin(), xs.end())) {
   return IsSubsetOf(xs.begin(), xs.end());
 }
 

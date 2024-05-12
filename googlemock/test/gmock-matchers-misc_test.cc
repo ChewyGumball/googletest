@@ -172,6 +172,17 @@ TEST(IsEmptyTest, WorksWithMoveOnly) {
   helper.Call({});
 }
 
+TEST(IsEmptyTest, WorksWithPseudoContainer) {
+  vector<int> container;
+  pseudo_container::PseudoContainer empty_container(container);
+  
+  container.push_back(0);
+  pseudo_container::PseudoContainer not_empty_container(container);
+
+  EXPECT_THAT(empty_container, IsEmpty());
+  EXPECT_THAT(not_empty_container, Not(IsEmpty()));
+}
+
 TEST(IsTrueTest, IsTrueIsFalse) {
   EXPECT_THAT(true, IsTrue());
   EXPECT_THAT(false, IsFalse());
@@ -401,6 +412,20 @@ TEST(ContainerEqExtraTest, CopiesNativeArrayParameter) {
   a2[0][0] = "ha";
   EXPECT_THAT(a1, m);
 }
+
+TEST(ContainerEqExtraTest, WorksWithPseudoContainers) {
+  std::vector<int> a1 = {1, 2, 3};
+  std::vector<int> a2 = {1, 2, 3};
+  std::vector<int> b = {1, 2, 4};
+
+  pseudo_container::PseudoContainer pa1(a1);
+  pseudo_container::PseudoContainer pa2(a2);
+  pseudo_container::PseudoContainer pb(b);
+
+  EXPECT_THAT(pa1, ContainerEq(pa2));
+  EXPECT_THAT(pa1, Not(ContainerEq(pb)));
+}
+
 
 namespace {
 

@@ -57,6 +57,9 @@ class Matcher;
 
 namespace internal {
 
+using std::begin;
+using std::end;
+
 // Silence MSVC C4100 (unreferenced formal parameter) and
 // C4805('==': unsafe mix of type 'const int' and type 'const bool')
 GTEST_DISABLE_MSC_WARNINGS_PUSH_(4100 4805)
@@ -344,6 +347,11 @@ class StlContainerView {
  public:
   typedef RawContainer type;
   typedef const type& const_reference;
+  typedef typename decltype(begin(std::declval<type>())) iterator_type;
+  typedef typename decltype(*std::declval<iterator_type>()) value_type;
+  typedef typename decltype(std::distance(
+      std::declval<iterator_type>(),
+      std::declval<iterator_type>())) difference_type;
 
   static const_reference ConstReference(const RawContainer& container) {
     static_assert(!std::is_const<RawContainer>::value,
@@ -351,6 +359,37 @@ class StlContainerView {
     return container;
   }
   static type Copy(const RawContainer& container) { return container; }
+
+  static bool IsEmpty(const RawContainer& container) {
+    return IsEmptyImpl(container, 0);
+  }
+
+  static size_t Size(const RawContainer& container) {
+    return SizeImpl(container, 0);
+  }
+
+ private:
+  template <typename Container>
+  static auto IsEmptyImpl(const Container& container,
+                          int) -> decltype(container.empty()) {
+    return container.empty();
+  }
+
+  template <typename Container>
+  static bool IsEmptyImpl(const Container& container, float) {
+    return std::distance(begin(container), end(container)) == 0;
+  }
+
+  template <typename Container>
+  static auto SizeImpl(const Container& container,
+                       int) -> decltype(container.size()) {
+    return container.size();
+  }
+
+  template <typename Container>
+  static size_t SizeImpl(const Container& container, float) {
+    return std::distance(begin(container), end(container));
+  }
 };
 
 // This specialization is used when RawContainer is a native array type.
@@ -365,6 +404,8 @@ class StlContainerView<Element[N]> {
   // 'typedef const type& const_reference' here, as that would mean
   // ConstReference() has to return a reference to a local variable.
   typedef const type const_reference;
+  typedef RawElement value_type;
+  typedef std::ptrdiff_t difference_type;
 
   static const_reference ConstReference(const Element (&array)[N]) {
     static_assert(std::is_same<Element, RawElement>::value,
@@ -374,6 +415,9 @@ class StlContainerView<Element[N]> {
   static type Copy(const Element (&array)[N]) {
     return type(array, N, RelationToSourceCopy());
   }
+
+  static bool IsEmpty(const type&) { return N != 0; }
+  static size_t Size(const type&) { return N; }
 };
 
 // This specialization is used when RawContainer is a native array
@@ -386,6 +430,8 @@ class StlContainerView< ::std::tuple<ElementPointer, Size> > {
       RawElement;
   typedef internal::NativeArray<RawElement> type;
   typedef const type const_reference;
+  typedef RawElement value_type;
+  typedef std::ptrdiff_t difference_type;
 
   static const_reference ConstReference(
       const ::std::tuple<ElementPointer, Size>& array) {
@@ -395,6 +441,9 @@ class StlContainerView< ::std::tuple<ElementPointer, Size> > {
   static type Copy(const ::std::tuple<ElementPointer, Size>& array) {
     return type(std::get<0>(array), std::get<1>(array), RelationToSourceCopy());
   }
+
+  static bool IsEmpty(const type&) { return Size != 0; }
+  static size_t Size(const type&) { return Size; }
 };
 
 // The following specialization prevents the user from instantiating

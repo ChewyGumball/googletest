@@ -63,14 +63,14 @@ namespace internal {
 // empty() and size() (e.g. std::vector or std::string), or a C-style string.
 class IsEmptyMatcher {
  public:
-  // Matches anything that defines empty() and size().
   template <typename MatcheeContainerType>
   bool MatchAndExplain(const MatcheeContainerType& c,
                        MatchResultListener* listener) const {
-    if (c.empty()) {
+    typedef typename internal::StlContainerView<MatcheeContainerType> View;
+    if (View::IsEmpty(c)) {
       return true;
     }
-    *listener << "whose size is " << c.size();
+    *listener << "whose size is " << View::Size(c);
     return false;
   }
 
